@@ -23,6 +23,7 @@ import {
   REQUEST_GUARD_ERROR_CODES,
 } from "../lib/security/requestGuards";
 import { config as proxyConfig, middleware as proxy } from "../middleware";
+import { CONTENT_SECURITY_POLICY_HEADER } from "../lib/security/headers";
 
 vi.mock("@/lib/security/accessControl", async () =>
   vi.importActual("../lib/security/accessControl"),
@@ -289,8 +290,28 @@ describe("access proxy", () => {
     clearRequestRateLimitBuckets();
   });
 
-  it("matches API routes", () => {
-    expect(proxyConfig.matcher).toBe("/api/:path*");
+  it("matches page and API routes while excluding Next.js static assets", () => {
+    expect(proxyConfig.matcher).toBe(
+      "/((?!_next/static|_next/image|favicon.ico).*)",
+    );
+  });
+
+  it("adds a request-specific nonce CSP to page responses", async () => {
+    vi.stubEnv("ACCESS_PASSWORD", "secret");
+    vi.stubEnv("DEPLOYMENT_MODE", "hosted");
+
+    const response = await proxy(new NextRequest("https://neo.test/"));
+    const csp = response.headers.get(CONTENT_SECURITY_POLICY_HEADER) || "";
+    const scriptSrc =
+      csp
+        .split(";")
+        .find((part) => part.trim().startsWith("script-src "))
+        ?.trim() || "";
+
+    expect(response.status).toBe(200);
+    expect(scriptSrc).toMatch(/'nonce-[A-Za-z0-9+/_-]+'/);
+    expect(scriptSrc).toContain("'strict-dynamic'");
+    expect(scriptSrc).not.toContain("'unsafe-inline'");
   });
 
   it("allows API requests when access password is disabled", async () => {
@@ -300,6 +321,9 @@ describe("access proxy", () => {
       new NextRequest("https://neo.test/api/config"),
     );
     expect(response.status).toBe(200);
+    expect(response.headers.get(CONTENT_SECURITY_POLICY_HEADER)).toContain(
+      "'nonce-",
+    );
   });
 
   it("allows the verification route without a session", async () => {

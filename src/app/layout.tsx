@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale } from "next-intl/server";
 import {
@@ -14,6 +15,7 @@ import {
   LIGHT_THEME_COLOR,
   THEME_INIT_SCRIPT,
 } from "@/lib/themeInitScript";
+import { CSP_NONCE_HEADER } from "@/lib/security/headers";
 import "./globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -82,12 +84,20 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const locale = normalizeSeoLocale(await getLocale());
+  const [localeValue, requestHeaders] = await Promise.all([
+    getLocale(),
+    headers(),
+  ]);
+  const locale = normalizeSeoLocale(localeValue);
+  const nonce = requestHeaders.get(CSP_NONCE_HEADER) || undefined;
 
   return (
     <html lang={locale} suppressHydrationWarning>
       <body className="antialiased">
-        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        <script
+          nonce={nonce}
+          dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }}
+        />
         <NextIntlClientProvider>{children}</NextIntlClientProvider>
       </body>
     </html>

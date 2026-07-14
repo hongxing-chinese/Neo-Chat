@@ -1,18 +1,32 @@
-import { createHash } from "node:crypto";
 import type { DeploymentMode } from "./deployment";
 import { getDeploymentMode } from "./deployment";
-import { THEME_INIT_SCRIPT } from "../themeInitScript";
+
+export const CONTENT_SECURITY_POLICY_HEADER = "Content-Security-Policy";
+export const CSP_NONCE_HEADER = "x-nonce";
 
 export interface SecurityHeader {
   key: string;
   value: string;
 }
 
-function buildCsp(mode: DeploymentMode): string {
+function assertValidNonce(nonce: string): void {
+  if (!/^[A-Za-z0-9+/_-]+={0,2}$/.test(nonce)) {
+    throw new Error("CSP nonce must be a non-empty base64-compatible value");
+  }
+}
+
+export function buildContentSecurityPolicy(
+  nonce: string,
+  mode: DeploymentMode = getDeploymentMode(),
+): string {
+  assertValidNonce(nonce);
   const isHosted = mode === "hosted";
-  const themeScriptHash = createHash("sha256")
-    .update(THEME_INIT_SCRIPT)
-    .digest("base64");
+  const scriptSources = [
+    "'self'",
+    `'nonce-${nonce}'`,
+    "'strict-dynamic'",
+    ...(!isHosted ? ["'unsafe-eval'"] : []),
+  ];
 
   return [
     "default-src 'self'",
@@ -20,9 +34,7 @@ function buildCsp(mode: DeploymentMode): string {
     "object-src 'none'",
     "frame-ancestors 'none'",
     "form-action 'self'",
-    isHosted
-      ? `script-src 'self' 'sha256-${themeScriptHash}'`
-      : "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    `script-src ${scriptSources.join(" ")}`,
     "style-src 'self' 'unsafe-inline'",
     `img-src 'self' data: blob: https:${isHosted ? "" : " http:"}`,
     "media-src 'self' data: blob:",
@@ -33,14 +45,8 @@ function buildCsp(mode: DeploymentMode): string {
   ].join("; ");
 }
 
-export function getSecurityHeaders(
-  mode: DeploymentMode = getDeploymentMode(),
-): SecurityHeader[] {
+export function getSecurityHeaders(): SecurityHeader[] {
   return [
-    {
-      key: "Content-Security-Policy",
-      value: buildCsp(mode),
-    },
     { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
     { key: "X-Content-Type-Options", value: "nosniff" },
     { key: "X-Frame-Options", value: "DENY" },

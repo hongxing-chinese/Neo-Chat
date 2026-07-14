@@ -101,6 +101,13 @@ available to the build step and to Next.js function execution for that
 deployment, so `NEXT_PUBLIC_SITE_URL` should be configured anywhere metadata,
 Open Graph image URLs, or generated public links must use the deployed domain.
 
+Hosted page responses use a request-specific Content Security Policy nonce.
+Keep the repository middleware enabled for page routes so Next.js can apply the
+same nonce to its framework, streaming, and hydration scripts. Do not replace
+this policy with a static `script-src` hash at the hosting layer: Next.js emits
+request-specific inline scripts that cannot be covered by the theme bootstrap
+script hash alone.
+
 Keep deployment passwords, provider keys, BYOK key material, Upstash
 credentials, and third-party service tokens out of source control. Configure
 them as Vercel environment variables instead.
